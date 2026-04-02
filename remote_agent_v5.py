@@ -37,13 +37,22 @@ import uvicorn
 BASE_PROJECT_ID = "antigravity-gui"
 
 def _load_config():
-    """Load config from config.json next to exe, or from .env"""
+    """Load config - uu tien: bundled (MEIPASS) > exe dir > .env"""
+    # 1. Tim trong PyInstaller bundle (sys._MEIPASS)
+    if getattr(sys, 'frozen', False):
+        bundle_dir = getattr(sys, '_MEIPASS', '')
+        cfg_path = os.path.join(bundle_dir, "config.json")
+        if os.path.exists(cfg_path):
+            with open(cfg_path, "r") as f:
+                cfg = json.load(f)
+            return cfg.get("gist_id", ""), base64.b64decode(cfg.get("token_b64", "")).decode()
+    # 2. Tim config.json canh EXE
     cfg_path = os.path.join(get_exe_dir(), "config.json")
     if os.path.exists(cfg_path):
         with open(cfg_path, "r") as f:
             cfg = json.load(f)
         return cfg.get("gist_id", ""), base64.b64decode(cfg.get("token_b64", "")).decode()
-    # Fallback: read from .env
+    # 3. Fallback: .env canh EXE
     env_path = os.path.join(get_exe_dir(), ".env")
     gist_id, token = "", ""
     if os.path.exists(env_path):
