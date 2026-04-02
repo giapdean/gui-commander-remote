@@ -14,9 +14,11 @@ Dự án này cho phép điều khiển máy tính từ xa (GUI Automation) thô
 3. Copy **Mã định danh** hiện lên màn hình và gửi cho Antigravity.
 
 ## 🛠️ Cấu trúc dự án
-- `remote_agent.py`: Script chạy trên máy mục tiêu (Target PC).
+- `remote_agent_v2.py`: Phiên bản mới nhất (khuyên dùng), hỗ trợ báo cáo trạng thái chi tiết qua ntfy.sh.
+- `remote_agent.py`: Phiên bản cơ bản.
 - `controller.py`: Thư viện điều khiển dành cho AI (Controller Side).
 - `requirements.txt`: Các thư viện cần thiết.
+- `test_ntfy.py`: Công cụ kiểm tra kết nối ntfy.sh.
 
 ## ⚠️ Lưu ý bảo mật
 Hãy chỉ chia sẻ Mã định danh cho người mà bạn tin tưởng vì họ sẽ có quyền điều khiển chuột/bàn phím trên máy tính của bạn.

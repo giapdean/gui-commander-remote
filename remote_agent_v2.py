@@ -1,0 +1,163 @@
+import pyautogui
+import mss
+import mss.tools
+import os
+import sys
+import subprocess
+import requests
+import re
+import threading
+import time
+import tkinter as tk
+from tkinter import messagebox
+import uuid
+import socket
+import winreg
+from fastapi import FastAPI, Response
+from pydantic import BaseModel
+import uvicorn
+
+# Cấu hình ID căn bản
+BASE_PROJECT_ID = "antigravity-gui"
+ID_FILE = "agent_id.txt"
+
+app = FastAPI()
+pyautogui.FAILSAFE = True
+
+class ClickRequest(BaseModel):
+    x: int
+    y: int
+
+class TypeRequest(BaseModel):
+    text: str
+
+class PressRequest(BaseModel):
+    key: str
+
+@app.get("/screenshot")
+def get_screenshot():
+    with mss.mss() as sct:
+        monitor = sct.monitors[0]
+        sct_img = sct.grab(monitor)
+        img_bytes = mss.tools.to_png(sct_img.rgb, sct_img.size)
+        return Response(content=img_bytes, media_type="image/png")
+
+@app.get("/info")
+def get_info():
+    width, height = pyautogui.size()
+    return {"width": width, "height": height, "status": "online"}
+
+@app.post("/click")
+def do_click(req: ClickRequest):
+    pyautogui.click(req.x, req.y)
+    return {"status": "success", "pos": [req.x, req.y]}
+
+@app.post("/type")
+def do_type(req: TypeRequest):
+    pyautogui.write(req.text, interval=0.05)
+    return {"status": "success"}
+
+@app.post("/press")
+def do_press(req: PressRequest):
+    pyautogui.press(req.key)
+    return {"status": "success", "key": req.key}
+
+def get_persistent_id():
+    """Lấy ID cố định từ file, nếu không có thì tạo mới"""
+    if os.path.exists(ID_FILE):
+        with open(ID_FILE, "r") as f:
+            return f.read().strip()
+    else:
+        new_id = f"{BASE_PROJECT_ID}-{socket.gethostname()}-{str(uuid.uuid4())[:4]}"
+        with open(ID_FILE, "w") as f:
+            f.write(new_id)
+        return new_id
+
+FINAL_ID = get_persistent_id()
+
+def report_to_ntfy(message):
+    try:
+        requests.post(f"https://ntfy.sh/{FINAL_ID}", 
+                     data=message.encode('utf-8'))
+        print(f"[AGENT] Reported: {message}")
+    except Exception as e:
+        print(f"Error reporting: {e}")
+
+def add_to_startup():
+    """Thêm file EXE vào mục khởi động cùng Windows (Registry)"""
+    if getattr(sys, 'frozen', False):
+        exe_path = sys.executable
+        key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+        try:
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_WRITE)
+            winreg.SetValueEx(key, "AntigravityRemoteAgent", 0, winreg.REG_SZ, exe_path)
+            winreg.CloseKey(key)
+            print(f"[AGENT] Added to Startup: {exe_path}")
+        except Exception as e:
+            print(f"[AGENT] Failed to add to Startup: {e}")
+
+def ensure_cloudflared():
+    cf_path = "cloudflared.exe"
+    if not os.path.exists(cf_path):
+        report_to_ntfy("Downloading cloudflared.exe...")
+        url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
+        r = requests.get(url, stream=True)
+        with open(cf_path, "wb") as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                f.write(chunk)
+        report_to_ntfy("Download complete.")
+    return os.path.abspath(cf_path)
+
+def start_tunnel_and_report():
+    try:
+        cf_path = ensure_cloudflared()
+        report_to_ntfy("Starting Cloudflare Tunnel...")
+        
+        # Chạy tunnel
+        cmd = [cf_path, "tunnel", "--url", "http://localhost:8000"]
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        
+        found_url = None
+        start_time = time.time()
+        
+        # Đọc output để tìm URL
+        for line in iter(proc.stdout.readline, ""):
+            print(line, end="")
+            match = re.search(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com", line)
+            if match:
+                found_url = match.group(0)
+                report_to_ntfy(f"PC Remote Agent is LIVE at: {found_url}")
+                show_popup(FINAL_ID)
+                break
+            
+            # Timeout sau 60s nếu không thấy URL
+            if time.time() - start_time > 60 and not found_url:
+                report_to_ntfy("Tunnel startup timeout (60s). Please check logs on Machine 2.")
+                break
+                
+    except Exception as e:
+        report_to_ntfy(f"Error starting tunnel: {str(e)}")
+
+def show_popup(msg_id):
+    def run_popup():
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showinfo("Antigravity Persistent Agent", 
+                            f"KẾT NỐI BẤT TỬ THÀNH CÔNG!\n\nMã định danh: {msg_id}\n\nMáy tính này sẽ tự động kết nối mỗi khi khởi động.")
+        root.destroy()
+    threading.Thread(target=run_popup, daemon=True).start()
+
+def run_server():
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="error")
+
+if __name__ == "__main__":
+    add_to_startup()
+    
+    server_thread = threading.Thread(target=run_server, daemon=True)
+    server_thread.start()
+    
+    time.sleep(2)
+    start_tunnel_and_report()
+    
+    while True:
+        time.sleep(1)
