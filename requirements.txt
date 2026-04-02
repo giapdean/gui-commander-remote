@@ -1,0 +1,7 @@
+pyautogui
+mss
+pillow
+fastapi
+uvicorn
+python-multipart
+requests
