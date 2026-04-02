@@ -1,9 +1,12 @@
 .venv/
 build/
 dist/
-!dist/remote_agent_v2.exe
 __pycache__/
 *.spec
 agent_id.txt
 *.png
 cloudflared.exe
+.env
+config.json
+machines.json
+agent_log.txt
